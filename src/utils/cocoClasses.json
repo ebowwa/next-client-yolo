@@ -1,0 +1,322 @@
+{
+  "person": {
+    "category": "people",
+    "description": "Human being"
+  },
+  "bicycle": {
+    "category": "vehicle",
+    "description": "Two-wheeled pedal-driven vehicle"
+  },
+  "car": {
+    "category": "vehicle",
+    "description": "Four-wheeled motor vehicle"
+  },
+  "motorcycle": {
+    "category": "vehicle",
+    "description": "Two-wheeled motor vehicle"
+  },
+  "airplane": {
+    "category": "vehicle",
+    "description": "Aircraft"
+  },
+  "bus": {
+    "category": "vehicle",
+    "description": "Large motor vehicle for passengers"
+  },
+  "train": {
+    "category": "vehicle",
+    "description": "Railway vehicle"
+  },
+  "truck": {
+    "category": "vehicle",
+    "description": "Large motor vehicle for cargo"
+  },
+  "boat": {
+    "category": "vehicle",
+    "description": "Water vessel"
+  },
+  "traffic light": {
+    "category": "outdoor",
+    "description": "Signal for controlling traffic"
+  },
+  "fire hydrant": {
+    "category": "outdoor",
+    "description": "Water connection point for firefighting"
+  },
+  "stop sign": {
+    "category": "outdoor",
+    "description": "Traffic sign indicating stop"
+  },
+  "parking meter": {
+    "category": "outdoor",
+    "description": "Device for parking payment"
+  },
+  "bench": {
+    "category": "outdoor",
+    "description": "Outdoor seating"
+  },
+  "bird": {
+    "category": "animal",
+    "description": "Flying animal"
+  },
+  "cat": {
+    "category": "animal",
+    "description": "Domestic feline"
+  },
+  "dog": {
+    "category": "animal",
+    "description": "Domestic canine"
+  },
+  "horse": {
+    "category": "animal",
+    "description": "Equine animal"
+  },
+  "sheep": {
+    "category": "animal",
+    "description": "Wooly farm animal"
+  },
+  "cow": {
+    "category": "animal",
+    "description": "Bovine farm animal"
+  },
+  "elephant": {
+    "category": "animal",
+    "description": "Large land mammal"
+  },
+  "bear": {
+    "category": "animal",
+    "description": "Large carnivorous mammal"
+  },
+  "zebra": {
+    "category": "animal",
+    "description": "Striped equine animal"
+  },
+  "giraffe": {
+    "category": "animal",
+    "description": "Long-necked African mammal"
+  },
+  "backpack": {
+    "category": "accessory",
+    "description": "Bag carried on back"
+  },
+  "umbrella": {
+    "category": "accessory",
+    "description": "Rain protection device"
+  },
+  "handbag": {
+    "category": "accessory",
+    "description": "Small carried bag"
+  },
+  "tie": {
+    "category": "accessory",
+    "description": "Neck clothing"
+  },
+  "suitcase": {
+    "category": "accessory",
+    "description": "Large travel bag"
+  },
+  "frisbee": {
+    "category": "sports",
+    "description": "Flying disc toy"
+  },
+  "skis": {
+    "category": "sports",
+    "description": "Snow sliding equipment"
+  },
+  "snowboard": {
+    "category": "sports",
+    "description": "Snow riding board"
+  },
+  "sports ball": {
+    "category": "sports",
+    "description": "Ball for sports"
+  },
+  "kite": {
+    "category": "sports",
+    "description": "Flying toy"
+  },
+  "baseball bat": {
+    "category": "sports",
+    "description": "Baseball striking tool"
+  },
+  "baseball glove": {
+    "category": "sports",
+    "description": "Baseball catching equipment"
+  },
+  "skateboard": {
+    "category": "sports",
+    "description": "Wheeled riding board"
+  },
+  "surfboard": {
+    "category": "sports",
+    "description": "Water riding board"
+  },
+  "tennis racket": {
+    "category": "sports",
+    "description": "Tennis striking tool"
+  },
+  "bottle": {
+    "category": "kitchen",
+    "description": "Container for liquids"
+  },
+  "wine glass": {
+    "category": "kitchen",
+    "description": "Drinking vessel for wine"
+  },
+  "cup": {
+    "category": "kitchen",
+    "description": "Drinking vessel"
+  },
+  "fork": {
+    "category": "kitchen",
+    "description": "Eating utensil"
+  },
+  "knife": {
+    "category": "kitchen",
+    "description": "Cutting utensil"
+  },
+  "spoon": {
+    "category": "kitchen",
+    "description": "Eating utensil"
+  },
+  "bowl": {
+    "category": "kitchen",
+    "description": "Food container"
+  },
+  "banana": {
+    "category": "food",
+    "description": "Yellow fruit"
+  },
+  "apple": {
+    "category": "food",
+    "description": "Round fruit"
+  },
+  "sandwich": {
+    "category": "food",
+    "description": "Food between bread"
+  },
+  "orange": {
+    "category": "food",
+    "description": "Citrus fruit"
+  },
+  "broccoli": {
+    "category": "food",
+    "description": "Green vegetable"
+  },
+  "carrot": {
+    "category": "food",
+    "description": "Orange vegetable"
+  },
+  "hot dog": {
+    "category": "food",
+    "description": "Sausage in bun"
+  },
+  "pizza": {
+    "category": "food",
+    "description": "Italian dish"
+  },
+  "donut": {
+    "category": "food",
+    "description": "Ring-shaped pastry"
+  },
+  "cake": {
+    "category": "food",
+    "description": "Sweet baked dessert"
+  },
+  "chair": {
+    "category": "furniture",
+    "description": "Seating furniture"
+  },
+  "couch": {
+    "category": "furniture",
+    "description": "Long soft seat"
+  },
+  "potted plant": {
+    "category": "furniture",
+    "description": "Indoor plant"
+  },
+  "bed": {
+    "category": "furniture",
+    "description": "Sleeping furniture"
+  },
+  "dining table": {
+    "category": "furniture",
+    "description": "Eating surface"
+  },
+  "toilet": {
+    "category": "furniture",
+    "description": "Bathroom fixture"
+  },
+  "tv": {
+    "category": "electronics",
+    "description": "Television display"
+  },
+  "laptop": {
+    "category": "electronics",
+    "description": "Portable computer"
+  },
+  "mouse": {
+    "category": "electronics",
+    "description": "Computer pointing device"
+  },
+  "remote": {
+    "category": "electronics",
+    "description": "Control device"
+  },
+  "keyboard": {
+    "category": "electronics",
+    "description": "Input device"
+  },
+  "cell phone": {
+    "category": "electronics",
+    "description": "Mobile phone"
+  },
+  "microwave": {
+    "category": "appliance",
+    "description": "Heating appliance"
+  },
+  "oven": {
+    "category": "appliance",
+    "description": "Cooking appliance"
+  },
+  "toaster": {
+    "category": "appliance",
+    "description": "Bread heating appliance"
+  },
+  "sink": {
+    "category": "appliance",
+    "description": "Water basin"
+  },
+  "refrigerator": {
+    "category": "appliance",
+    "description": "Cooling appliance"
+  },
+  "book": {
+    "category": "indoor",
+    "description": "Reading material"
+  },
+  "clock": {
+    "category": "indoor",
+    "description": "Time display device"
+  },
+  "vase": {
+    "category": "indoor",
+    "description": "Decorative container"
+  },
+  "scissors": {
+    "category": "indoor",
+    "description": "Cutting tool"
+  },
+  "teddy bear": {
+    "category": "indoor",
+    "description": "Stuffed toy bear"
+  },
+  "hair drier": {
+    "category": "indoor",
+    "description": "Hair drying appliance"
+  },
+  "toothbrush": {
+    "category": "indoor",
+    "description": "Teeth cleaning tool"
+  }
+}
