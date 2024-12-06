@@ -5,8 +5,8 @@ from typing import List, Optional
 from datetime import datetime
 import json
 
-from models import Detection, Base
-from database import engine, get_db
+from .models import Detection, Base
+from .database import engine, get_db
 from pydantic import BaseModel, Field
 
 # Create tables
