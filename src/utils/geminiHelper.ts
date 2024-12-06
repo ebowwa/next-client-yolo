@@ -1,11 +1,14 @@
 import { GoogleGenerativeAI } from '@google/generative-ai';
+import { FileManager } from './fileManager';
 
 export class GeminiHelper {
   private model: any = null;
   private genAI: GoogleGenerativeAI;
+  private fileManager: FileManager;
 
   constructor(apiKey: string) {
     this.genAI = new GoogleGenerativeAI(apiKey);
+    this.fileManager = new FileManager(apiKey);
     // Initialize immediately
     this.initialize().catch(console.error);
   }
@@ -31,20 +34,216 @@ export class GeminiHelper {
     return this.model;
   }
 
-  private async blobToBase64(blob: Blob): Promise<string> {
-    return new Promise((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (typeof reader.result === 'string') {
-          const base64 = reader.result.split(',')[1];
-          resolve(base64);
-        } else {
-          reject(new Error('Failed to convert blob to base64'));
+  async analyzeMedia(mediaType: 'image' | 'video' | 'audio', file: File | Blob, prompt?: string): Promise<{ analysis: string }> {
+    try {
+      if (!this.model) {
+        return { analysis: 'Gemini is disabled' };
+      }
+
+      // Convert file to base64
+      const base64Data = await this.fileManager.fileToBase64(file);
+      const mimeType = this.fileManager.getMimeType(file);
+
+      // Build the content parts for the API call
+      const contentParts: any[] = [{
+        inlineData: {
+          mimeType,
+          data: base64Data
         }
+      }];
+
+      // Add the prompt
+      const defaultPrompts = {
+        image: 'Analyze this image and describe what you see.',
+        video: 'Analyze this video and describe what happens in it.',
+        audio: 'Transcribe and analyze this audio content.'
       };
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
-    });
+
+      contentParts.push(prompt || defaultPrompts[mediaType]);
+
+      // Generate content
+      const result = await this.model.generateContent(contentParts);
+      return { analysis: result.response.text() };
+
+    } catch (err) {
+      const error = err as Error;
+      console.error(`Error in ${mediaType} analysis:`, error.message);
+      return { analysis: `Error analyzing ${mediaType}: ${error.message}` };
+    }
+  }
+
+  async analyzeVideoTimestamp(videoFile: File | Blob, timestamp: string, prompt: string): Promise<{ analysis: string }> {
+    return this.analyzeMedia('video', videoFile, `At timestamp ${timestamp}, ${prompt}`);
+  }
+
+  async analyzeAudioSegment(audioFile: File | Blob, startTime: string, endTime: string, prompt?: string): Promise<{ analysis: string }> {
+    const timePrompt = `Analyze the audio segment from ${startTime} to ${endTime}. ${prompt || ''}`;
+    return this.analyzeMedia('audio', audioFile, timePrompt);
+  }
+
+  async analyzeVideo(videoFile: File | Blob, prompt?: string): Promise<{ analysis: string }> {
+    try {
+      if (!this.model) {
+        return { analysis: 'Gemini is disabled' };
+      }
+
+      // Upload video using File API
+      const { uri, mimeType } = await this.fileManager.uploadVideoFile(videoFile);
+
+      // Build content parts for the API call
+      const contentParts = [
+        {
+          fileData: {
+            fileUri: uri,
+            mimeType: mimeType
+          }
+        },
+        prompt || "Analyze this video and describe what happens in it, including both visual and audio content."
+      ];
+
+      // Generate content
+      const result = await this.model.generateContent(contentParts);
+      return { analysis: result.response.text() };
+
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error analyzing video:', error.message);
+      return { analysis: `Error analyzing video: ${error.message}` };
+    }
+  }
+
+  async analyzeVideoSegment(videoFile: File | Blob, startTime: string, endTime: string, prompt?: string): Promise<{ analysis: string }> {
+    try {
+      if (!this.model) {
+        return { analysis: 'Gemini is disabled' };
+      }
+
+      // Upload video using File API
+      const { uri, mimeType } = await this.fileManager.uploadVideoFile(videoFile);
+
+      // Build content parts for the API call
+      const timePrompt = `Analyze the video segment from ${startTime} to ${endTime}. ${prompt || 'Describe what happens during this segment.'}`;
+      
+      const contentParts = [
+        {
+          fileData: {
+            fileUri: uri,
+            mimeType: mimeType
+          }
+        },
+        timePrompt
+      ];
+
+      // Generate content
+      const result = await this.model.generateContent(contentParts);
+      return { analysis: result.response.text() };
+
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error analyzing video segment:', error.message);
+      return { analysis: `Error analyzing video segment: ${error.message}` };
+    }
+  }
+
+  async getVideoTranscript(videoFile: File | Blob): Promise<{ transcript: string }> {
+    try {
+      if (!this.model) {
+        return { transcript: 'Gemini is disabled' };
+      }
+
+      // Upload video using File API
+      const { uri, mimeType } = await this.fileManager.uploadVideoFile(videoFile);
+
+      // Build content parts for the API call
+      const contentParts = [
+        {
+          fileData: {
+            fileUri: uri,
+            mimeType: mimeType
+          }
+        },
+        "Transcribe the audio from this video, including timestamps. Also provide brief visual descriptions for context."
+      ];
+
+      // Generate content
+      const result = await this.model.generateContent(contentParts);
+      return { transcript: result.response.text() };
+
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error generating transcript:', error.message);
+      return { transcript: `Error generating transcript: ${error.message}` };
+    }
+  }
+
+  async analyzeDetections(detections: any[]): Promise<{ analysis: string }> {
+    try {
+      if (!this.model) {
+        // Try to get past analysis for similar scene
+        const pastAnalysis = await this.getPastSceneAnalysis(detections);
+        if (pastAnalysis) {
+          console.log('📚 Retrieved past scene analysis from database');
+          return { analysis: pastAnalysis };
+        }
+        return { analysis: 'Gemini is disabled and no past analysis found' };
+      }
+
+      const video = document.querySelector('video');
+      if (!video) throw new Error('Video element not found');
+
+      // Create a canvas for the entire scene
+      const canvas = document.createElement('canvas');
+      canvas.width = video.videoWidth;
+      canvas.height = video.videoHeight;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Could not get canvas context');
+
+      // Draw the full video frame
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      // Draw bounding boxes for all detections
+      detections.forEach(detection => {
+        const [x, y, width, height] = detection.bbox;
+        ctx.strokeStyle = 'red';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x, y, width, height);
+      });
+
+      // Convert canvas to base64
+      const blob = await new Promise<Blob>((resolve) => {
+        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.95);
+      });
+      const imageData = await this.fileManager.fileToBase64(blob);
+
+      // Build prompt with all objects
+      const objectsList = detections.map(d => d.class).join(', ');
+      const prompt = `Analyze this scene containing: ${objectsList}. 
+      Describe how these objects relate to each other and the overall context.
+      Keep the response concise but informative.`;
+
+      console.log('🔍 Analyzing scene with objects:', objectsList);
+      const result = await this.model.generateContent([
+        prompt,
+        {
+          inlineData: {
+            mimeType: 'image/jpeg',
+            data: imageData
+          }
+        }
+      ]);
+
+      const analysis = result.response.text();
+      console.log('✨ Scene analysis:', analysis);
+
+      // Save to database
+      await this.saveSceneAnalysis(detections, analysis);
+
+      return { analysis };
+    } catch (err) {
+      const error = err as Error;
+      console.error('Error in scene analysis:', error.message);
+      return { analysis: `Error analyzing scene: ${error.message}` };
+    }
   }
 
   private async saveSceneAnalysis(detections: any[], analysis: string) {
@@ -111,76 +310,6 @@ export class GeminiHelper {
       const error = err as Error;
       console.error('Error fetching past scene analysis:', error.message);
       return null;
-    }
-  }
-
-  async analyzeDetections(detections: any[]): Promise<{ analysis: string }> {
-    try {
-      if (!this.model) {
-        // Try to get past analysis for similar scene
-        const pastAnalysis = await this.getPastSceneAnalysis(detections);
-        if (pastAnalysis) {
-          console.log('📚 Retrieved past scene analysis from database');
-          return { analysis: pastAnalysis };
-        }
-        return { analysis: 'Gemini is disabled and no past analysis found' };
-      }
-
-      const video = document.querySelector('video');
-      if (!video) throw new Error('Video element not found');
-
-      // Create a canvas for the entire scene
-      const canvas = document.createElement('canvas');
-      canvas.width = video.videoWidth;
-      canvas.height = video.videoHeight;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error('Could not get canvas context');
-
-      // Draw the full video frame
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
-
-      // Draw bounding boxes for all detections
-      detections.forEach(detection => {
-        const [x, y, width, height] = detection.bbox;
-        ctx.strokeStyle = 'red';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, width, height);
-      });
-
-      // Convert canvas to base64
-      const blob = await new Promise<Blob>((resolve) => {
-        canvas.toBlob((b) => resolve(b!), 'image/jpeg', 0.95);
-      });
-      const imageData = await this.blobToBase64(blob);
-
-      // Build prompt with all objects
-      const objectsList = detections.map(d => d.class).join(', ');
-      const prompt = `Analyze this scene containing: ${objectsList}. 
-      Describe how these objects relate to each other and the overall context.
-      Keep the response concise but informative.`;
-
-      console.log('🔍 Analyzing scene with objects:', objectsList);
-      const result = await this.model.generateContent([
-        prompt,
-        {
-          inlineData: {
-            mimeType: 'image/jpeg',
-            data: imageData
-          }
-        }
-      ]);
-
-      const analysis = result.response.text();
-      console.log('✨ Scene analysis:', analysis);
-
-      // Save to database
-      await this.saveSceneAnalysis(detections, analysis);
-
-      return { analysis };
-    } catch (err) {
-      const error = err as Error;
-      console.error('Error in scene analysis:', error.message);
-      return { analysis: `Error analyzing scene: ${error.message}` };
     }
   }
 }
