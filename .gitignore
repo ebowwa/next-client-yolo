@@ -61,9 +61,10 @@ eggs/
 
 # Database
 *.db
-*db_service/*.db
-detections.db
 db_service/detections.db
+db_service/*.db
+**/detections.db
+**/db_service/detections.db
 
 # IDE
 .idea/
