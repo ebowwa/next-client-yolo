@@ -7,6 +7,15 @@ import '@tensorflow/tfjs';
 import type { DetectedObject } from '@tensorflow-models/coco-ssd';
 import cocoClasses from '../utils/cocoClasses.json';
 import { EntityTracker } from '../utils/entityTracker';
+import { ClipHelper } from '../utils/clipHelper';
+import { GeminiHelper } from '../utils/geminiHelper';
+import dynamic from 'next/dynamic';
+
+// Dynamically import ClipComponent with no SSR
+const ClipComponent = dynamic(
+  () => import('../components/ClipComponent'),
+  { ssr: false }
+);
 
 // Type definitions
 type CocoClass = {
@@ -44,6 +53,10 @@ export default function VideoDetection(): JSX.Element {
   const [threshold, setThreshold] = useState(0.5);
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
   const [detections, setDetections] = useState<DetectedObject[]>([]);
+  const [textPrompt, setTextPrompt] = useState<string>('');
+  const [clipSimilarityThreshold, setClipSimilarityThreshold] = useState(0.2);
+  const clipHelperRef = useRef<ClipHelper>(new ClipHelper());
+  const [clipEnabled, setClipEnabled] = useState(false);
   const [detectionHistory, setDetectionHistory] = useState<{
     [key: string]: {
       count: number;
@@ -57,6 +70,25 @@ export default function VideoDetection(): JSX.Element {
   const entityTrackerRef = useRef<EntityTracker>(new EntityTracker());
   const latestDetectionsRef = useRef<DetectedObject[]>([]);
   const animationFrameRef = useRef<number | undefined>(undefined);
+  const [geminiEnabled, setGeminiEnabled] = useState(false);
+  const [analyses, setAnalyses] = useState<{ [key: string]: string }>({});
+  const geminiHelperRef = useRef<GeminiHelper | null>(null);
+  const lastAnalysisTimeRef = useRef<number>(0);
+
+  // Load saved analyses from localStorage on mount
+  useEffect(() => {
+    const savedAnalyses = localStorage.getItem('geminiAnalyses');
+    if (savedAnalyses) {
+      setAnalyses(JSON.parse(savedAnalyses));
+    }
+  }, []);
+
+  // Save analyses to localStorage whenever they change
+  useEffect(() => {
+    if (Object.keys(analyses).length > 0) {
+      localStorage.setItem('geminiAnalyses', JSON.stringify(analyses));
+    }
+  }, [analyses]);
 
   // Update detection history when new detections come in
   useEffect(() => {
@@ -175,87 +207,95 @@ export default function VideoDetection(): JSX.Element {
     return groups;
   }, [detections, detectionHistory]);
 
-  const detectObjects = async () => {
-    if (!model || !videoRef.current || !canvasRef.current) return;
-
-    const video = videoRef.current;
-    const canvas = canvasRef.current;
-    const ctx = canvas.getContext('2d');
-
-    if (!ctx || video.readyState !== 4) return;
-
-    // Ensure canvas dimensions match video
-    const videoWidth = video.videoWidth;
-    const videoHeight = video.videoHeight;
-    canvas.width = videoWidth;
-    canvas.height = videoHeight;
-
-    try {
-      // Get predictions
-      const predictions = await model.detect(video);
-      
-      // Clear previous drawings
-      ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-      // Filter predictions based on threshold and selected categories
-      const validPredictions = predictions
-        .filter(prediction => {
-          const isSelectedCategory = selectedCategories.length === 0 || 
-            selectedCategories.includes(typedCocoClasses[prediction.class]?.category || 'unknown');
-          return prediction.score >= (threshold * 0.7) && isSelectedCategory;
-        })
-        .sort((a, b) => (b.score || 0) - (a.score || 0));
-
-      // Update tracked entities
-      const trackedEntities = await entityTrackerRef.current.update(
-        validPredictions,
-        threshold * 0.7,
-        video,
-        canvas
-      );
-
-      // Update latest detections ref
-      latestDetectionsRef.current = trackedEntities;
-
-      // Draw predictions
-      validPredictions.forEach(prediction => {
-        const [x, y, width, height] = prediction.bbox;
-        const category = typedCocoClasses[prediction.class]?.category || 'unknown';
-        const color = categoryColors[category] || '#ffffff';
-
-        // Draw bounding box
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x, y, width, height);
-
-        // Draw label background
-        const label = `${prediction.class} ${Math.round(prediction.score! * 100)}%`;
-        const fontSize = Math.max(12, Math.min(16, width / 10));
-        ctx.font = `${fontSize}px Arial`;
-        const textMetrics = ctx.measureText(label);
-        const textWidth = textMetrics.width;
-        const textHeight = fontSize;
-        const padding = 4;
-
-        ctx.fillStyle = `${color}dd`;
-        ctx.fillRect(
-          x - 1,
-          y - textHeight - padding * 2,
-          textWidth + padding * 2,
-          textHeight + padding * 2
-        );
-
-        // Draw label text
-        ctx.fillStyle = '#ffffff';
-        ctx.fillText(label, x + padding, y - padding);
-      });
-
-    } catch (error) {
-      console.error('Detection error:', error);
+  useEffect(() => {
+    // Initialize Gemini if enabled
+    if (geminiEnabled && !geminiHelperRef.current) {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error('Gemini API key not found');
+        setGeminiEnabled(false);
+        return;
+      }
+      console.log('Initializing Gemini');
+      geminiHelperRef.current = new GeminiHelper(apiKey);
+      console.log('Gemini helper initialized');
     }
+  }, [geminiEnabled]);
 
-    // Request next frame
-    animationFrameRef.current = requestAnimationFrame(detectObjects);
+  // Function to handle Gemini analysis
+  const handleGeminiAnalysis = async (predictions: any[]) => {
+    if (!geminiEnabled || !geminiHelperRef.current) return;
+
+    const currentTime = Date.now();
+    // Only analyze if it's been more than 5 seconds since last analysis
+    if (currentTime - lastAnalysisTimeRef.current >= 5000) {
+      try {
+        console.log('🔄 Starting scene analysis');
+        const result = await geminiHelperRef.current.analyzeDetections(predictions);
+        if (result.analysis) {
+          const newAnalyses = {
+            ...analyses,
+            scene: result.analysis
+          };
+          setAnalyses(newAnalyses);
+          localStorage.setItem('geminiAnalyses', JSON.stringify(newAnalyses));
+          lastAnalysisTimeRef.current = currentTime;
+        }
+      } catch (err) {
+        const error = err as Error;
+        console.error('❌ Error analyzing scene:', error.message);
+      }
+    }
+  };
+
+  // Toggle Gemini functionality
+  const toggleGemini = async () => {
+    const newState = !geminiEnabled;
+    setGeminiEnabled(newState);
+    
+    if (newState) {
+      const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+      if (!apiKey) {
+        console.error('Gemini API key not found');
+        return;
+      }
+
+      console.log('🟣 Gemini Enabled - Starting immediate analysis');
+      try {
+        console.log('🔄 Initializing Gemini helper');
+        if (!geminiHelperRef.current) {
+          geminiHelperRef.current = new GeminiHelper(apiKey);
+        }
+        await geminiHelperRef.current.initialize();
+        
+        // Immediate analysis of current detections
+        if (latestDetectionsRef.current.length > 0) {
+          console.log('📸 Analyzing current scene');
+          const result = await geminiHelperRef.current.analyzeDetections(latestDetectionsRef.current);
+          if (result.analysis) {
+            const newAnalyses = {
+              ...analyses,
+              scene: result.analysis
+            };
+            setAnalyses(newAnalyses);
+            localStorage.setItem('geminiAnalyses', JSON.stringify(newAnalyses));
+            lastAnalysisTimeRef.current = Date.now();
+          }
+        }
+      } catch (err) {
+        const error = err as Error;
+        console.error('❌ Error initializing Gemini:', error.message);
+      }
+    } else {
+      console.log('🔴 Gemini Disabled - Keeping existing analyses');
+      // Analysis state will persist in localStorage and React state
+    }
+  };
+
+  // Clear analyses
+  const clearAnalyses = () => {
+    setAnalyses({});
+    localStorage.removeItem('geminiAnalyses');
   };
 
   useEffect(() => {
@@ -342,55 +382,204 @@ export default function VideoDetection(): JSX.Element {
     );
   };
 
+  const detectObjects = async () => {
+    if (!model || !videoRef.current || !canvasRef.current) return;
+
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    const ctx = canvas.getContext('2d');
+
+    if (!ctx || video.readyState !== 4) return;
+
+    // Set canvas dimensions to match video
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+
+    try {
+      const predictions = await model.detect(video);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+      // Filter predictions by category first
+      const categoryFilteredPredictions = predictions.filter(prediction => {
+        const isSelectedCategory = selectedCategories.length === 0 || 
+          selectedCategories.includes(typedCocoClasses[prediction.class]?.category || 'unknown');
+        return prediction.score >= threshold && isSelectedCategory;
+      });
+
+      // Then apply CLIP filtering if enabled
+      const clipFilteredPredictions = await Promise.all(
+        categoryFilteredPredictions.map(async prediction => {
+          if (!clipEnabled || !clipHelperRef.current) {
+            return { ...prediction, clipMatch: true };
+          }
+          return {
+            ...prediction,
+            video,
+            clipMatch: await clipHelperRef.current.checkClipSimilarity(
+              { ...prediction, video },
+              textPrompt,
+              clipSimilarityThreshold
+            )
+          };
+        })
+      );
+
+      const finalPredictions = clipFilteredPredictions
+        .filter(pred => pred.clipMatch)
+        .sort((a, b) => (b.score || 0) - (a.score || 0));
+
+      // Update tracked entities
+      const trackedEntities = await entityTrackerRef.current.update(
+        finalPredictions,
+        threshold,
+        video,
+        canvas
+      );
+
+      // Analyze with Gemini if enabled
+      if (geminiEnabled && geminiHelperRef.current) {
+        handleGeminiAnalysis(finalPredictions);
+      }
+
+      latestDetectionsRef.current = trackedEntities;
+
+      // Draw predictions
+      finalPredictions.forEach(prediction => {
+        const [x, y, width, height] = prediction.bbox;
+        const category = typedCocoClasses[prediction.class]?.category || 'unknown';
+        const color = categoryColors[category] || '#ffffff';
+
+        // Draw bounding box
+        ctx.strokeStyle = color;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.rect(x, y, width, height);
+        ctx.stroke();
+
+        // Draw label background
+        const label = `${prediction.class} ${Math.round(prediction.score! * 100)}%`;
+        const fontSize = Math.max(12, Math.min(16, width / 10));
+        ctx.font = `${fontSize}px Arial`;
+        const textMetrics = ctx.measureText(label);
+        const textWidth = textMetrics.width;
+        const textHeight = fontSize;
+        const padding = 4;
+
+        // Draw top label
+        ctx.fillStyle = `${color}dd`;
+        ctx.fillRect(
+          x,
+          y - textHeight - padding * 2,
+          textWidth + padding * 2,
+          textHeight + padding * 2
+        );
+        ctx.fillStyle = '#ffffff';
+        ctx.fillText(label, x + padding, y - padding);
+      });
+
+    } catch (error) {
+      console.error('Detection error:', error);
+    }
+
+    animationFrameRef.current = requestAnimationFrame(detectObjects);
+  };
+
   return (
-    <main className="min-h-screen p-4 bg-gray-900">
+    <div className="min-h-screen bg-gray-900 text-white p-4">
       <div className="max-w-6xl mx-auto">
         <div className="flex justify-between items-center mb-4">
-          <h1 className="text-3xl font-bold text-white">Object Detection</h1>
-          <button
-            onClick={() => setShowLog(!showLog)}
-            className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            {showLog ? 'Hide Log' : 'Show Log'}
-          </button>
-        </div>
-        
-        <div className="mb-4 bg-gray-800 p-4 rounded-lg">
-          <div className="mb-4">
-            <label className="block text-white mb-2">Detection Threshold: {threshold}</label>
-            <input
-              type="range"
-              min="0"
-              max="1"
-              step="0.1"
-              value={threshold}
-              onChange={(e) => setThreshold(Number(e.target.value))}
-              className="w-full"
-            />
-          </div>
-          
-          <div>
-            <label className="block text-white mb-2">Filter Categories:</label>
-            <div className="flex flex-wrap gap-2">
-              {categories.map(category => (
-                <button
-                  key={category}
-                  onClick={() => toggleCategory(category)}
-                  className={`px-3 py-1 rounded ${
-                    selectedCategories.includes(category)
-                      ? 'bg-blue-500 text-white'
-                      : 'bg-gray-600 text-gray-200'
-                  }`}
-                >
-                  {category}
-                </button>
-              ))}
-            </div>
+          <h1 className="text-3xl font-bold">Object Detection</h1>
+          <div className="flex items-center space-x-4">
+            <button
+              onClick={() => setShowLog(!showLog)}
+              className="px-4 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors"
+            >
+              {showLog ? 'Hide Log' : 'Show Log'}
+            </button>
+            <button
+              onClick={() => setClipEnabled(!clipEnabled)}
+              className={`px-4 py-2 ${
+                clipEnabled ? 'bg-green-500 hover:bg-green-600' : 'bg-gray-500 hover:bg-gray-600'
+              } text-white rounded transition-colors`}
+            >
+              CLIP {clipEnabled ? 'Enabled' : 'Disabled'}
+            </button>
+            <button
+              onClick={toggleGemini}
+              className={`px-4 py-2 ${
+                geminiEnabled ? 'bg-purple-500 hover:bg-purple-600' : 'bg-gray-500 hover:bg-gray-600'
+              } text-white rounded transition-colors`}
+            >
+              Gemini {geminiEnabled ? 'Enabled' : 'Disabled'}
+            </button>
           </div>
         </div>
 
+        {/* CLIP Component */}
+        <ClipComponent
+          enabled={clipEnabled}
+          onError={() => setClipEnabled(false)}
+          clipHelperRef={clipHelperRef}
+        />
+
+        {/* CLIP Controls */}
+        {clipEnabled && (
+          <div className="mb-4 bg-gray-800 p-4 rounded-lg">
+            <div className="flex flex-col space-y-4">
+              <div className="flex items-center space-x-4">
+                <input
+                  type="text"
+                  value={textPrompt}
+                  onChange={(e) => setTextPrompt(e.target.value)}
+                  placeholder="Try: 'find dangerous items' or 'show people eating'"
+                  className="flex-1 px-4 py-2 bg-gray-700 text-white rounded focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <div className="flex flex-col space-y-2">
+                  <label className="block text-white">Similarity: {clipSimilarityThreshold}</label>
+                  <input
+                    type="range"
+                    min="0"
+                    max="1"
+                    step="0.05"
+                    value={clipSimilarityThreshold}
+                    onChange={(e) => setClipSimilarityThreshold(Number(e.target.value))}
+                    className="w-32"
+                  />
+                </div>
+              </div>
+              
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  onClick={() => setTextPrompt("Find anything that looks dangerous")}
+                  className="px-3 py-1 bg-red-600 text-white rounded hover:bg-red-700"
+                >
+                  Detect Dangers
+                </button>
+                <button
+                  onClick={() => setTextPrompt("Show medical equipment or supplies")}
+                  className="px-3 py-1 bg-blue-600 text-white rounded hover:bg-blue-700"
+                >
+                  Medical Items
+                </button>
+                <button
+                  onClick={() => setTextPrompt("Find people eating or drinking")}
+                  className="px-3 py-1 bg-green-600 text-white rounded hover:bg-green-700"
+                >
+                  Eating/Drinking
+                </button>
+                <button
+                  onClick={() => setTextPrompt("Show items that look broken or damaged")}
+                  className="px-3 py-1 bg-yellow-600 text-white rounded hover:bg-yellow-700"
+                >
+                  Broken Items
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Main Content */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-          {/* Video Detection Panel */}
           <div className="lg:col-span-2">
             <div className="relative bg-gray-800 p-4 rounded-lg overflow-hidden">
               <video
@@ -417,14 +606,49 @@ export default function VideoDetection(): JSX.Element {
             </div>
           </div>
 
-          {/* Detection Log Panel */}
+          {/* Gemini Analysis Panel */}
+          {geminiEnabled && (
+            <div className="lg:col-span-1">
+              <div className="bg-gray-800 p-4 rounded-lg h-full overflow-auto">
+                <div className="flex justify-between items-center mb-4">
+                  <h2 className="text-xl font-bold">Gemini Analysis</h2>
+                  {Object.keys(analyses).length > 0 && (
+                    <button
+                      onClick={clearAnalyses}
+                      className="px-2 py-1 text-sm bg-red-500 hover:bg-red-600 text-white rounded"
+                    >
+                      Clear
+                    </button>
+                  )}
+                </div>
+                {Object.entries(analyses).map(([key, data]) => (
+                  <div 
+                    key={key} 
+                    className="mb-4 p-3 rounded-lg bg-gray-700"
+                  >
+                    <div className="flex justify-between items-center mb-2">
+                      <span className="font-semibold">{key}</span>
+                    </div>
+                    <p className="text-sm text-gray-200">{data}</p>
+                  </div>
+                ))}
+                {Object.keys(analyses).length === 0 && (
+                  <div className="text-gray-400 text-center">
+                    No Gemini analysis yet
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Detection Log */}
           {showLog && (
             <div className="lg:col-span-1">
               <div className="bg-gray-800 p-4 rounded-lg h-full overflow-auto">
-                <h2 className="text-xl font-bold text-white mb-4">Detection Log</h2>
+                <h2 className="text-xl font-bold mb-4">Detection Log</h2>
                 {Object.entries(groupedDetections).map(([category, items]) => (
                   <div key={category} className="mb-4">
-                    <h3 className="text-lg font-semibold text-white mb-2" style={{ color: categoryColors[category] }}>
+                    <h3 className="text-lg font-semibold mb-2" style={{ color: categoryColors[category] }}>
                       {category} ({items.length})
                     </h3>
                     <div className="space-y-2">
@@ -439,7 +663,7 @@ export default function VideoDetection(): JSX.Element {
                                 : 'opacity-75'
                           }`}
                         >
-                          <div className="text-white flex justify-between items-center">
+                          <div className="flex justify-between items-center">
                             <span>{typedCocoClasses[item.class]?.description || item.class}</span>
                             <div className="flex items-center space-x-2">
                               <span className="text-sm bg-gray-600 px-2 py-1 rounded">
@@ -475,6 +699,6 @@ export default function VideoDetection(): JSX.Element {
           )}
         </div>
       </div>
-    </main>
+    </div>
   );
 }
